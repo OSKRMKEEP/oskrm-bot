@@ -8,8 +8,8 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '1360329140492856';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Endpoint directo y estable de la API de Gemini
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+// Usamos el endpoint v1 con gemini-1.5-flash
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 // 1. Verificación para Meta (GET)
 app.get('/webhook', (req, res) => {
@@ -35,7 +35,7 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        // Extraer remitente directamente del objeto del mensaje
+        // Extraer remitente
         const from = message.from;
         let contents = [];
 
