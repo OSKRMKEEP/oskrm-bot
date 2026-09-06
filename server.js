@@ -8,8 +8,8 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '1360329140492856';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Endpoint corregido de Gemini (se utiliza gemini-1.5-flash directamente)
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+// Endpoint oficial en API v1 utilizando gemini-1.5-flash
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -33,8 +33,8 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        // Corregir remitente
-        const from = message.from || value?.contacts?.[0]?.wa_id;
+        // Extraer remitente de forma segura
+        const from = message.from || value?.contacts?.[0]?.wa_id || value?.contacts?.[0]?.wa_id;
         let contents = [];
 
         // 1. SI ES UN MENSAJE DE TEXTO
@@ -42,17 +42,17 @@ app.post('/webhook', async (req, res) => {
             console.log(`Texto recibido de ${from}: "${message.text.body}"`);
             contents = [{ parts: [{ text: message.text.body }] }];
         } 
-        // 2. SI ES UN AUDIO O MENSAJE DE VOZ
+        // 2. SI ES UN AUDIO O NOTA DE VOZ
         else if (message.type === 'audio') {
-            console.log(`Audio recibido de ${from}. Procesando archivo...`);
+            console.log(`Audio recibido de ${from}. Procesando...`);
             const mediaId = message.audio.id;
 
-            // Paso A: Obtener la URL del audio desde Meta
+            // Obtener URL del archivo desde Meta
             const mediaRes = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
                 headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` }
             });
 
-            // Paso B: Descargar el archivo binario del audio
+            // Descargar el binario del audio
             const audioBuffer = await axios.get(mediaRes.data.url, {
                 headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` },
                 responseType: 'arraybuffer'
@@ -61,24 +61,23 @@ app.post('/webhook', async (req, res) => {
             const base64Audio = Buffer.from(audioBuffer.data).toString('base64');
             const mimeType = message.audio.mime_type || 'audio/ogg';
 
-            // Estructura multimodal para Gemini
             contents = [{
                 parts: [
                     { inline_data: { mime_type: mimeType, data: base64Audio } },
-                    { text: "Escucha este audio y responde o resume lo solicitado de forma clara." }
+                    { text: "Escucha este audio y responde o procesa lo solicitado de forma clara." }
                 ]
             }];
         } else {
             return;
         }
 
-        // Enviar consulta a Gemini
+        // Consulta a Gemini API
         const geminiRes = await axios.post(GEMINI_URL, { contents });
-        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No pude interpretar el mensaje.";
+        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se obtuvo respuesta.";
 
-        console.log(`Respuesta enviada a ${from}: "${replyText}"`);
+        console.log(`Respuesta de Gemini para ${from}: "${replyText}"`);
 
-        // Responder al usuario en WhatsApp
+        // Enviar respuesta a WhatsApp
         await axios.post(
             `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
             {
@@ -94,8 +93,10 @@ app.post('/webhook', async (req, res) => {
             }
         );
 
+        console.log("Mensaje enviado con éxito a WhatsApp.");
+
     } catch (error) {
-        console.error("Error al procesar:", error.response?.data || error.message);
+        console.error("Error al procesar la petición:", error.response?.data || error.message);
     }
 });
 
