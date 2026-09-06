@@ -8,8 +8,8 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '1360329140492856';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Endpoint oficial en API v1 utilizando gemini-1.5-flash
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+// URL corregida con el modelo en versión estable / latest
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
 
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -33,18 +33,18 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        // Extraer remitente de forma segura
-        const from = message.from || value?.contacts?.[0]?.wa_id || value?.contacts?.[0]?.wa_id;
+        // Extraer remitente de forma directa del objeto del mensaje
+        const from = message.from || value?.contacts?.[0]?.wa_id;
         let contents = [];
 
-        // 1. SI ES UN MENSAJE DE TEXTO
+        // 1. TEXTO
         if (message.type === 'text') {
             console.log(`Texto recibido de ${from}: "${message.text.body}"`);
             contents = [{ parts: [{ text: message.text.body }] }];
         } 
-        // 2. SI ES UN AUDIO O NOTA DE VOZ
+        // 2. AUDIO / NOTA DE VOZ
         else if (message.type === 'audio') {
-            console.log(`Audio recibido de ${from}. Procesando...`);
+            console.log(`Audio recibido de ${from}. Descargando y procesando...`);
             const mediaId = message.audio.id;
 
             // Obtener URL del archivo desde Meta
@@ -64,16 +64,16 @@ app.post('/webhook', async (req, res) => {
             contents = [{
                 parts: [
                     { inline_data: { mime_type: mimeType, data: base64Audio } },
-                    { text: "Escucha este audio y responde o procesa lo solicitado de forma clara." }
+                    { text: "Escucha este audio y responde de manera clara y concisa." }
                 ]
             }];
         } else {
             return;
         }
 
-        // Consulta a Gemini API
+        // Consulta a Gemini
         const geminiRes = await axios.post(GEMINI_URL, { contents });
-        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se obtuvo respuesta.";
+        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No pude generar una respuesta.";
 
         console.log(`Respuesta de Gemini para ${from}: "${replyText}"`);
 
