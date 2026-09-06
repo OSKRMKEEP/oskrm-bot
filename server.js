@@ -32,26 +32,24 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        // Extracción correcta del número remitente
-        const from = message.from || value?.contacts?.[0]?.wa_id;
+        // Extraer remitente de forma segura sin undefined
+        const from = message.from || value?.contacts?.[0]?.wa_id || value?.metadata?.display_phone_number;
         let contents = [];
 
-        // CASO A: Mensaje de Texto
+        // TEXTO
         if (message.type === 'text') {
             console.log(`Texto recibido de ${from}: "${message.text.body}"`);
             contents = [{ parts: [{ text: message.text.body }] }];
         } 
-        // CASO B: Nota de voz / Audio
+        // AUDIO / NOTA DE VOZ
         else if (message.type === 'audio') {
-            console.log(`Audio recibido de ${from}. Descargando de Meta...`);
+            console.log(`Audio recibido de ${from}. Descargando...`);
             const mediaId = message.audio.id;
 
-            // Obtener la URL del archivo multimedia en Meta
             const mediaRes = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
                 headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` }
             });
 
-            // Descargar el archivo binario
             const audioBuffer = await axios.get(mediaRes.data.url, {
                 headers: { 'Authorization': `Bearer ${WHATSAPP_TOKEN}` },
                 responseType: 'arraybuffer'
@@ -63,28 +61,25 @@ app.post('/webhook', async (req, res) => {
             contents = [{
                 parts: [
                     { inline_data: { mime_type: mimeType, data: base64Audio } },
-                    { text: "Escucha este audio y responde o procesa la solicitud de forma concisa." }
+                    { text: "Escucha este audio y responde o procesa lo solicitado de forma clara." }
                 ]
             }];
         } else {
             return;
         }
 
-        // Llamada a Gemini usando el endpoint con key en header y parámetro
-        const geminiRes = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-            { contents },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-goog-api-key': GEMINI_API_KEY
-                }
-            }
-        );
+        // Petición HTTP limpia a Gemini API v1
+        const geminiRes = await axios({
+            method: 'post',
+            url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent`,
+            params: { key: GEMINI_API_KEY },
+            headers: { 'Content-Type': 'application/json' },
+            data: { contents }
+        });
 
-        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo interpretar el mensaje.";
+        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se obtuvo respuesta.";
 
-        console.log(`Respuesta enviada a ${from}: "${replyText}"`);
+        console.log(`Respuesta para ${from}: "${replyText}"`);
 
         // Enviar respuesta a WhatsApp
         await axios.post(
@@ -102,10 +97,12 @@ app.post('/webhook', async (req, res) => {
             }
         );
 
+        console.log("Mensaje enviado con éxito a WhatsApp.");
+
     } catch (error) {
-        console.error("Error al procesar:", error.response?.data || error.message);
+        console.error("Error al procesar la petición:", error.response?.data || error.message);
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor de OSKRM activo en puerto ${PORT}`));
+app.listen(PORT, () => console.log(`Servidor activo en puerto ${PORT}`));
