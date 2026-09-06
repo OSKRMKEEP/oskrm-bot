@@ -1,6 +1,7 @@
 {
   "name": "oskrm-bot",
   "version": "1.0.0",
+  "description": "Bot de WhatsApp para gestión de tareas con Gemini AI",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
