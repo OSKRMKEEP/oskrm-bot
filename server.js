@@ -23,7 +23,6 @@ app.get('/webhook', (req, res) => {
 
 // 2. Ruta para recibir y procesar mensajes de WhatsApp (POST)
 app.post('/webhook', async (req, res) => {
-    // Responder 200 OK de inmediato a Meta para evitar reintentos duplicados
     res.sendStatus(200);
 
     try {
@@ -32,13 +31,12 @@ app.post('/webhook', async (req, res) => {
         const value = changes?.value;
         const message = value?.messages?.[0];
 
-        // Si no hay mensaje en la carga recibida, salir
         if (!message) return;
 
-        const from = message.from; // Número de teléfono del usuario
+        // Obtener número del remitente correctamente
+        const from = message.from || value?.contacts?.[0]?.wa_id;
         let userText = "";
 
-        // Extraer texto del mensaje
         if (message.type === 'text') {
             userText = message.text.body;
         } else {
@@ -47,18 +45,24 @@ app.post('/webhook', async (req, res) => {
 
         console.log(`Mensaje entrante de ${from}: "${userText}"`);
 
-        // 3. Consultar a la API de Gemini
+        // Endpoint corregido de la API de Gemini (v1beta con gemini-1.5-flash)
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
         
-        const geminiRes = await axios.post(geminiUrl, {
-            contents: [{ parts: [{ text: userText }] }]
-        });
+        const geminiRes = await axios.post(
+            geminiUrl,
+            {
+                contents: [{ parts: [{ text: userText }] }]
+            },
+            {
+                headers: { 'Content-Type': 'application/json' }
+            }
+        );
 
         const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar una respuesta.";
 
         console.log(`Respuesta de Gemini: "${replyText}"`);
 
-        // 4. Enviar la respuesta de vuelta a WhatsApp
+        // Enviar respuesta por WhatsApp
         await axios.post(
             `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
             {
