@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskKeep IA by OK</title>
+    <!-- Tailwind CSS & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { keep: { yellow: '#fbbc04', bg: '#f1f3f4' } } } }
+        }
+    </script>
+    <style>
+        .keep-shadow { box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 2px 6px 2px rgba(60,64,67,0.15); }
+        .keep-card-shadow { box-shadow: 0 1px 2px 0 rgba(60,64,67,0.2), 0 1px 3px 1px rgba(60,64,67,0.1); }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+
+    <!-- MODAL SALA PRIVADA -->
+    <div id="room-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
+            <div class="w-14 h-14 bg-amber-400 text-slate-900 rounded-2xl flex items-center justify-center font-bold text-2xl mx-auto">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            <div>
+                <h3 class="text-lg font-bold text-slate-800">Sala Privada de Tareas</h3>
+                <p class="text-xs text-slate-500 mt-1">Ingresa el PIN de tu equipo para sincronizar cambios en vivo.</p>
+            </div>
+            <input type="text" id="room-code-input" placeholder="Ej: 123" class="w-full p-3 bg-slate-100 border border-slate-300 rounded-xl font-mono text-center font-bold text-sm uppercase focus:outline-none focus:border-amber-500">
+            <button onclick="enterRoom()" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow">
+                Ingresar a la Sala
+            </button>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header class="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <!-- Botón de Menú (Tres Rayas) -->
+            <button onclick="toggleSidebar()" class="p-2 text-slate-600 hover:bg-slate-100 rounded-full">
+                <i class="fa-solid fa-bars text-lg"></i>
+            </button>
+            <div class="flex items-center gap-2 cursor-pointer" onclick="filterByNav('notes')">
+                <div class="w-9 h-9 bg-amber-400 text-white rounded-xl flex items-center justify-center font-bold text-xl shadow-sm">
+                    <i class="fa-solid fa-lightbulb"></i>
+                </div>
+                <!-- Título y Subtítulo by OK -->
+                <div class="flex flex-col justify-center">
+                    <div class="flex items-center gap-2 leading-none">
+                        <span class="text-xl font-normal text-slate-700">Task<span class="font-bold text-slate-900">Keep</span></span>
+                        <span id="current-room-badge" class="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded-full font-mono font-bold">Sin Sala</span>
+                    </div>
+                    <span class="text-xs font-semibold text-amber-600 italic mt-0.5">by OK</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button onclick="openContactsModal()" class="px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-full text-xs font-bold flex items-center gap-1.5 border border-indigo-200">
+                <i class="fa-solid fa-address-book"></i> <span class="hidden md:inline">Contactos</span>
+            </button>
+            <button onclick="openApiModal()" class="px-3 py-1.5 bg-slate-800 text-amber-400 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                <i class="fa-solid fa-key"></i> <span class="hidden md:inline">API Gemini</span>
+            </button>
+            <button onclick="changeRoom()" class="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-full text-xs font-bold flex items-center gap-1.5">
+                <i class="fa-solid fa-door-open"></i> <span class="hidden md:inline">Cambiar Sala</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 relative overflow-hidden">
+        <!-- MENÚ LATERAL INTERACTIVO -->
+        <aside id="sidebar" class="w-64 bg-white border-r border-slate-200 flex-shrink-0 transition-all duration-300 z-30 relative shadow-lg md:shadow-none">
+            <nav class="p-2 space-y-1 text-sm font-medium">
+                <button onclick="filterByNav('notes')" id="nav-notes" class="w-full text-left px-4 py-3 rounded-r-full flex items-center gap-4 bg-amber-100/80 text-slate-900 font-semibold">
+                    <i class="fa-solid fa-lightbulb text-amber-600 text-lg w-5 text-center"></i>
+                    <span class="sidebar-text">Mis Tareas & Keep</span>
+                </button>
+                <button onclick="filterByNav('by-person')" id="nav-by-person" class="w-full text-left px-4 py-3 rounded-r-full flex items-center gap-4 text-slate-600 hover:bg-slate-100">
+                    <i class="fa-solid fa-users text-blue-600 text-lg w-5 text-center"></i>
+                    <span class="sidebar-text">Tareas por Persona</span>
+                </button>
+                <button onclick="filterByNav('whatsapp-inbox')" id="nav-whatsapp-inbox" class="w-full text-left px-4 py-3 rounded-r-full flex items-center gap-4 text-slate-600 hover:bg-slate-100">
+                    <i class="fa-brands fa-whatsapp text-emerald-600 text-lg w-5 text-center"></i>
+                    <span class="sidebar-text flex-1">Buzón de Audios y Chats</span>
+                    <span id="badge-inbox-count" class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded-full font-bold">0</span>
+                </button>
+            </nav>
+        </aside> 
+
+        <!-- ÁREA PRINCIPAL -->
+        <main class="flex-1 bg-slate-50/60 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+
+            <!-- VISTA TAREAS -->
+            <div id="view-notes" class="max-w-4xl mx-auto space-y-6">
+                <div class="max-w-xl mx-auto bg-white rounded-2xl keep-shadow p-3 border border-slate-200 space-y-3">
+                    <input type="text" id="new-task-title" placeholder="+ Añadir tarea manual..." class="w-full px-2 text-sm font-semibold text-slate-800 focus:outline-none">
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                        <div class="flex items-center gap-2">
+                            <label class="text-slate-400 font-medium">Asignar a:</label>
+                            <input type="text" id="new-task-assignee" value="María" class="px-2 py-1 bg-slate-100 text-slate-700 font-semibold rounded-lg focus:outline-none w-28">
+                        </div>
+                        <button onclick="saveTaskManual()" class="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow-sm">
+                            Guardar Tarea
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-r from-emerald-900 to-slate-900 rounded-2xl p-5 text-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-2xl shadow">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-bold flex items-center gap-2">
+                                Procesar Mensajes y Audios Acumulados
+                                <span id="banner-inbox-count" class="bg-emerald-500 text-slate-950 text-[10px] px-2 py-0.5 rounded-full font-black">0 pendientes</span>
+                            </h4>
+                            <p class="text-xs text-emerald-200 mt-0.5">Analiza en lote las notas de voz y chats reenviados para ahorrar IA.</p>
+                        </div>
+                    </div>
+                    <button onclick="processBatchWithAI()" id="btn-run-ai" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-bolt"></i> Ejecutar IA en Lote
+                    </button>
+                </div>
+
+                <div id="notes-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- VISTA POR PERSONA -->
+            <div id="view-by-person" class="hidden max-w-4xl mx-auto space-y-6">
+                <div id="person-cards-container" class="space-y-6"></div>
+            </div>
+
+            <!-- VISTA BUZÓN DE CHATS Y AUDIOS -->
+            <div id="view-whatsapp-inbox" class="hidden max-w-3xl mx-auto space-y-6">
+                <div class="bg-emerald-950 text-white p-6 rounded-2xl shadow-lg space-y-4">
+                    <div class="flex items-center justify-between border-b border-emerald-800 pb-3">
+                        <h3 class="text-sm font-bold flex items-center gap-2">
+                            <i class="fa-brands fa-whatsapp text-emerald-400 text-xl"></i>
+                            Reenviar o Adjuntar Mensajes / Audios
+                        </h3>
+                        <span class="text-[10px] bg-emerald-800 text-emerald-200 px-2 py-0.5 rounded-full font-bold">Sin Gastar IA Aún</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-[10px] text-emerald-300 font-bold mb-1">¿Quién envió el mensaje?</label>
+                            <input type="text" id="msg-sender" value="María" placeholder="Ej: María, 51987654321..." class="w-full p-2.5 bg-emerald-900 border border-emerald-700 rounded-xl text-white focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-emerald-300 font-bold mb-1">Subir Archivo de Audio (Notas de Voz):</label>
+                            <input type="file" id="audio-file-input" accept="audio/*" class="w-full text-xs text-emerald-200 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-800 file:text-emerald-100 hover:file:bg-emerald-700 cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] text-emerald-300 font-bold mb-1">O Pega Texto del Chat:</label>
+                        <textarea id="msg-content" rows="3" placeholder="Ej: 'María dijo: ya completé el archivo y llamé a los proveedores.'" class="w-full p-2.5 bg-emerald-900 border border-emerald-700 rounded-xl text-xs text-white placeholder-emerald-500 focus:outline-none"></textarea>
+                    </div>
+
+                    <button onclick="addMessageToInbox()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i> Guardar en Buzón (Pendiente IA)
+                    </button>
+                </div>
+
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 keep-card-shadow space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Historial del Buzón:</h4>
+                        <button onclick="clearInbox()" class="text-xs text-rose-600 hover:underline">Limpiar Buzón</button>
+                    </div>
+                    <div id="raw-messages-list" class="space-y-3"></div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL DIRECTORIO DE CONTACTOS -->
+    <div id="contacts-modal" class="fixed inset-0 bg-slate-900/50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div class="flex items-center justify-between border-b pb-3">
+                <h3 class="font-bold text-slate-800 text-base flex items-center gap-2">
+                    <i class="fa-solid fa-address-book text-indigo-600"></i> Directorio de Contactos
+                </h3>
+                <button onclick="closeContactsModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p class="text-xs text-slate-500">Registra a los miembros de tu equipo para asociar sus números y alias de WhatsApp:</p>
+            <div class="space-y-2">
+                <input type="text" id="contact-name" placeholder="Nombre (Ej: María)" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs">
+                <input type="text" id="contact-phone" placeholder="N° WhatsApp (Ej: 51987654321)" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs">
+            </div>
+            <button onclick="saveContact()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow">
+                Guardar en Directorio
+            </button>
+            <div class="pt-3 border-t">
+                <h5 class="text-[11px] font-bold uppercase text-slate-400 mb-2">MIEMBROS REGISTRADOS:</h5>
+                <div id="contacts-list" class="space-y-2 max-h-40 overflow-y-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL API KEY -->
+    <div id="api-modal" class="fixed inset-0 bg-slate-900/50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <h3 class="font-bold text-slate-800 text-sm">Configurar Clave API Gemini</h3>
+            <input type="password" id="api-key-input" placeholder="....." class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeApiModal()" class="px-3 py-1.5 bg-slate-100 text-xs font-bold rounded-lg">Cancelar</button>
+                <button onclick="saveApiKey()" class="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg shadow">Guardar Clave</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "demo-key", authDomain: "taskkeep-demo.firebaseapp.com",
+            projectId: "taskkeep-demo", storageBucket: "taskkeep-demo.appspot.com",
+            messagingSenderId: "123456789", appId: "1:123456789:web:demo"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let roomCode = localStorage.getItem('TASKKEEP_ROOM') || '';
+        let apiKey = localStorage.getItem('TASKKEEP_GEMINI_KEY') || '';
+        window.tasks = [];
+        window.contacts = JSON.parse(localStorage.getItem('TASKKEEP_CONTACTS') || '[]');
+        window.rawMessages = JSON.parse(localStorage.getItem('TASKKEEP_INBOX') || '[]');
+
+        signInAnonymously(auth);
+
+        window.enterRoom = function() {
+            const input = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (!input) return alert('Ingresa un código de sala');
+            roomCode = input;
+            localStorage.setItem('TASKKEEP_ROOM', roomCode);
+            document.getElementById('room-modal').classList.add('hidden');
+            document.getElementById('current-room-badge').textContent = `Sala: ${roomCode}`;
+            listenToRoomData();
+        };
+
+        window.changeRoom = () => document.getElementById('room-modal').classList.remove('hidden');
+
+        if (roomCode) {
+            document.getElementById('room-modal').classList.add('hidden');
+            document.getElementById('current-room-badge').textContent = `Sala: ${roomCode}`;
+            listenToRoomData();
+        }
+
+        function listenToRoomData() {
+            if (!roomCode) return;
+            onSnapshot(collection(db, 'taskkeep_rooms', roomCode, 'tasks'), (snapshot) => {
+                window.tasks = [];
+                snapshot.forEach(docSnap => window.tasks.push({ id: docSnap.id, ...docSnap.data() }));
+                renderNotes();
+                renderByPersonView();
+            });
+        }
+
+        window.saveTaskManual = async function() {
+            const title = document.getElementById('new-task-title').value.trim();
+            const assignee = document.getElementById('new-task-assignee').value.trim() || 'María';
+            if (!title) return;
+            await setDoc(doc(db, 'taskkeep_rooms', roomCode, 'tasks', Date.now().toString()), {
+                title, assignee, done: false, createdAt: new Date().toISOString()
+            });
+            document.getElementById('new-task-title').value = '';
+        };
+
+        window.toggleDone = async (id, currentStatus) => await updateDoc(doc(db, 'taskkeep_rooms', roomCode, 'tasks', id), { done: !currentStatus });
+        window.deleteTask = async (id) => await deleteDoc(doc(db, 'taskkeep_rooms', roomCode, 'tasks', id));
+
+        window.saveContact = function() {
+            const name = document.getElementById('contact-name').value.trim();
+            const phone = document.getElementById('contact-phone').value.trim();
+            if (!name) return alert('Ingresa al menos un nombre');
+            window.contacts.push({ name, phone });
+            localStorage.setItem('TASKKEEP_CONTACTS', JSON.stringify(window.contacts));
+            document.getElementById('contact-name').value = '';
+            document.getElementById('contact-phone').value = '';
+            renderContacts();
+        };
+
+        function renderContacts() {
+            const container = document.getElementById('contacts-list');
+            if (window.contacts.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 italic">No hay contactos guardados aún.</p>`;
+                return;
+            }
+            container.innerHTML = window.contacts.map((c, i) => `
+                <div class="flex items-center justify-between p-2 bg-slate-100 rounded-xl text-xs">
+                    <div><span class="font-bold text-slate-800">${c.name}</span> <span class="text-slate-400 text-[10px]">${c.phone || ''}</span></div>
+                    <button onclick="window.contacts.splice(${i},1); localStorage.setItem('TASKKEEP_CONTACTS', JSON.stringify(window.contacts)); renderContacts();" class="text-slate-400 hover:text-rose-500"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `).join('');
+        }
+
+        window.addMessageToInbox = async function() {
+            const sender = document.getElementById('msg-sender').value.trim() || 'María';
+            const content = document.getElementById('msg-content').value.trim();
+            const fileInput = document.getElementById('audio-file-input');
+
+            let audioBase64 = null;
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                audioBase64 = await new Promise(res => {
+                    const r = new FileReader();
+                    r.onload = () => res(r.result.split(',')[1]);
+                    r.readAsDataURL(file);
+                });
+            }
+
+            if (!content && !audioBase64) return alert('Escribe un texto o sube un archivo de audio');
+
+            window.rawMessages.unshift({
+                id: "msg_" + Date.now(),
+                sender, text: `${sender} dijo: "${content || 'Audio adjunto'}"`,
+                audioData: audioBase64, processed: false, date: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+            });
+
+            localStorage.setItem('TASKKEEP_INBOX', JSON.stringify(window.rawMessages));
+            document.getElementById('msg-content').value = '';
+            fileInput.value = '';
+            updateInboxBadges();
+        };
+
+        window.clearInbox = () => { window.rawMessages = []; localStorage.setItem('TASKKEEP_INBOX', JSON.stringify([])); updateInboxBadges(); };
+
+        function updateInboxBadges() {
+            const pending = window.rawMessages.filter(m => !m.processed).length;
+            document.getElementById('badge-inbox-count').textContent = pending;
+            document.getElementById('banner-inbox-count').textContent = `${pending} pendientes`;
+            renderRawMessagesList();
+        }
+
+        function renderRawMessagesList() {
+            const container = document.getElementById('raw-messages-list');
+            if (window.rawMessages.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Buzón vacío.</p>`;
+                return;
+            }
+            container.innerHTML = window.rawMessages.map((m, idx) => `
+                <div class="p-3 bg-white border border-slate-200 rounded-xl flex items-start justify-between gap-3 text-xs">
+                    <div>
+                        <p class="text-slate-800 font-medium">${m.text}</p>
+                        <span class="text-[10px] ${m.processed ? 'text-slate-400 bg-slate-100' : 'text-amber-700 bg-amber-50'} px-2 py-0.5 rounded font-bold">${m.processed ? 'Procesado ✓' : 'Pendiente IA ⚡'}</span>
+                    </div>
+                    <button onclick="window.rawMessages.splice(${idx}, 1); localStorage.setItem('TASKKEEP_INBOX', JSON.stringify(window.rawMessages)); updateInboxBadges();" class="text-slate-300 hover:text-rose-500"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            `).join('');
+        }
+
+        window.processBatchWithAI = async function() {
+            const unprocessed = window.rawMessages.filter(m => !m.processed);
+            if (unprocessed.length === 0) return alert('No hay mensajes pendientes en el buzón.');
+            apiKey = localStorage.getItem('TASKKEEP_GEMINI_KEY') || '';
+            if (!apiKey) return openApiModal();
+
+            const btn = document.getElementById('btn-run-ai');
+            btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Procesando...`;
+
+            const pendingTasks = window.tasks.filter(t => !t.done);
+            const contactsCtx = window.contacts.map(c => `- ${c.name} (N°/Alias: ${c.phone || 'S/N'})`).join('\n');
+
+            const prompt = `Analiza estos mensajes acumulados y desmarca o crea tareas en TaskKeep.
+
+DIRECTORIO DE CONTACTOS Y ALIAS:
+${contactsCtx}
+
+TAREAS PENDIENTES ACTUALES:
+${pendingTasks.map(t => `- ID: "${t.id}" | Asignado a: "${t.assignee}" | Tarea: "${t.title}"`).join('\n')}
+
+MENSAJES EN BUZÓN:
+${unprocessed.map(m => `- ${m.text}`).join('\n')}
+
+Devuelve JSON: { "completedTaskIds": ["id1"], "newTasks": [{ "title": "...", "assignee": "..." }] }`;
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } })
+                });
+
+                const data = await res.json();
+                const parsed = JSON.parse(data.candidates[0].content.parts[0].text);
+
+                if (parsed.completedTaskIds) {
+                    for (let id of parsed.completedTaskIds) await updateDoc(doc(db, 'taskkeep_rooms', roomCode, 'tasks', id), { done: true });
+                }
+                if (parsed.newTasks) {
+                    for (let nt of parsed.newTasks) await setDoc(doc(db, 'taskkeep_rooms', roomCode, 'tasks', Date.now().toString()), { title: nt.title, assignee: nt.assignee || 'María', done: false, createdAt: new Date().toISOString() });
+                }
+
+                window.rawMessages = window.rawMessages.map(m => ({ ...m, processed: true }));
+                localStorage.setItem('TASKKEEP_INBOX', JSON.stringify(window.rawMessages));
+                updateInboxBadges();
+                alert('¡Tareas actualizadas correctamente con IA!');
+            } catch (e) {
+                alert('Error al procesar con la API de Gemini.');
+            } finally {
+                btn.disabled = false; btn.innerHTML = `<i class="fa-solid fa-bolt"></i> Ejecutar IA en Lote`;
+            }
+        };
+
+        window.toggleSidebar = () => {
+            const sidebar = document.getElementById('sidebar');
+            const texts = document.querySelectorAll('.sidebar-text');
+            
+            sidebar.classList.toggle('w-64');
+            sidebar.classList.toggle('w-16');
+            
+            texts.forEach(el => el.classList.toggle('hidden'));
+        };
+        window.filterByNav = (navId) => {
+            ['notes', 'by-person', 'whatsapp-inbox'].forEach(v => document.getElementById(`view-${v}`).classList.add('hidden'));
+            document.getElementById(`view-${navId}`).classList.remove('hidden');
+        };
+
+        function renderNotes() {
+            const grid = document.getElementById('notes-grid');
+            const active = window.tasks.filter(t => !t.done);
+            if (active.length === 0) { grid.innerHTML = `<p class="col-span-full text-center text-slate-400 text-xs py-12">No hay tareas pendientes.</p>`; return; }
+            const grouped = {};
+            active.forEach(t => { (grouped[t.assignee] = grouped[t.assignee] || []).push(t); });
+            grid.innerHTML = Object.entries(grouped).map(([assignee, list]) => `
+                <div class="bg-white rounded-2xl p-4 border border-slate-200 keep-card-shadow space-y-3">
+                    <div class="flex items-center justify-between border-b pb-2">
+                        <h4 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-user-circle text-amber-500"></i> ${assignee}</h4>
+                        <span class="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-800 rounded-full border border-amber-200">${list.length} pendientes</span>
+                    </div>
+                    <div class="space-y-2 text-xs">
+                        ${list.map(t => `
+                            <div class="flex items-start gap-2">
+                                <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleDone('${t.id}', ${t.done})" class="mt-0.5 text-amber-500 cursor-pointer">
+                                <span class="${t.done ? 'line-through text-slate-400' : 'text-slate-700'} flex-1">${t.title}</span>
+                                <button onclick="deleteTask('${t.id}')" class="text-slate-300 hover:text-rose-500 text-xs"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderByPersonView() {
+            const container = document.getElementById('person-cards-container');
+            const assignees = Array.from(new Set(window.tasks.map(t => t.assignee)));
+            if (assignees.length === 0) { container.innerHTML = `<p class="text-xs text-slate-400 text-center py-8">Sin integrantes.</p>`; return; }
+            container.innerHTML = assignees.map(person => `
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 keep-card-shadow space-y-3">
+                    <h4 class="font-bold text-slate-800 text-sm border-b pb-2"><i class="fa-solid fa-user text-amber-500"></i> ${person}</h4>
+                    <div class="space-y-1 text-xs">
+                        ${window.tasks.filter(t => t.assignee === person).map(t => `
+                            <div class="flex items-center justify-between p-2 bg-slate-50 rounded-xl">
+                                <span class="${t.done ? 'line-through text-slate-400' : 'text-slate-700'}">${t.title}</span>
+                                <span class="text-[10px] font-bold ${t.done ? 'text-emerald-600' : 'text-amber-600'}">${t.done ? 'Completado' : 'Pendiente'}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.openContactsModal = () => { renderContacts(); document.getElementById('contacts-modal').classList.remove('hidden'); };
+        window.closeContactsModal = () => document.getElementById('contacts-modal').classList.add('hidden');
+        window.openApiModal = () => document.getElementById('api-modal').classList.remove('hidden');
+        window.closeApiModal = () => document.getElementById('api-modal').classList.add('hidden');
+        window.saveApiKey = () => {
+            apiKey = document.getElementById('api-key-input').value.trim();
+            localStorage.setItem('TASKKEEP_GEMINI_KEY', apiKey);
+            closeApiModal();
+        };
+
+        window.addEventListener('DOMContentLoaded', () => { updateInboxBadges(); });
+    </script>
+</body>
+</html>
