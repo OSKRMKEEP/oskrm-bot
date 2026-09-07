@@ -35,7 +35,7 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        const from = message.from || value?.contacts?.[0]?.wa_id;
+        const from = message.from || value?.contacts?.[0]?.wa_id || value?.messages?.[0]?.from;
         let contents = [];
 
         // TEXTO
