@@ -8,7 +8,10 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '1360329140492856';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// 1. Verificación para Meta (GET)
+// Endpoint directo utilizando la API Key configurada
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+// 1. Verificación Webhook Meta (GET)
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -32,8 +35,7 @@ app.post('/webhook', async (req, res) => {
 
         if (!message) return;
 
-        // Extraer remitente de forma segura sin undefined
-        const from = message.from || value?.contacts?.[0]?.wa_id || value?.metadata?.display_phone_number;
+        const from = message.from || value?.contacts?.[0]?.wa_id;
         let contents = [];
 
         // TEXTO
@@ -43,7 +45,7 @@ app.post('/webhook', async (req, res) => {
         } 
         // AUDIO / NOTA DE VOZ
         else if (message.type === 'audio') {
-            console.log(`Audio recibido de ${from}. Descargando...`);
+            console.log(`Audio recibido de ${from}. Procesando...`);
             const mediaId = message.audio.id;
 
             const mediaRes = await axios.get(`https://graph.facebook.com/v18.0/${mediaId}`, {
@@ -61,27 +63,25 @@ app.post('/webhook', async (req, res) => {
             contents = [{
                 parts: [
                     { inline_data: { mime_type: mimeType, data: base64Audio } },
-                    { text: "Escucha este audio y responde o procesa lo solicitado de forma clara." }
+                    { text: "Escucha este audio y responde o sintetiza la instrucción de forma concisa." }
                 ]
             }];
         } else {
             return;
         }
 
-        // Petición HTTP limpia a Gemini API v1
-        const geminiRes = await axios({
-            method: 'post',
-            url: `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent`,
-            params: { key: GEMINI_API_KEY },
-            headers: { 'Content-Type': 'application/json' },
-            data: { contents }
-        });
+        // Llamada a Gemini
+        const geminiRes = await axios.post(
+            GEMINI_URL,
+            { contents },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
 
-        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se obtuvo respuesta.";
+        const replyText = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo interpretar la consulta.";
 
-        console.log(`Respuesta para ${from}: "${replyText}"`);
+        console.log(`Respuesta enviada a ${from}: "${replyText}"`);
 
-        // Enviar respuesta a WhatsApp
+        // Enviar respuesta por WhatsApp
         await axios.post(
             `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`,
             {
@@ -97,10 +97,8 @@ app.post('/webhook', async (req, res) => {
             }
         );
 
-        console.log("Mensaje enviado con éxito a WhatsApp.");
-
     } catch (error) {
-        console.error("Error al procesar la petición:", error.response?.data || error.message);
+        console.error("Error al procesar:", error.response?.data || error.message);
     }
 });
 
